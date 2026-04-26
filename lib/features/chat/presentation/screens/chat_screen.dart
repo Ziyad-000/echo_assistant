@@ -233,6 +233,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                         child: TextField(
+                          key: const Key('chat_input_field'),
                           controller: _textController,
                           minLines: 1,
                           maxLines: 5,

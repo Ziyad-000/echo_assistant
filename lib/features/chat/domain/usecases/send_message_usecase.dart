@@ -6,7 +6,15 @@ class SendMessageUseCase {
 
   SendMessageUseCase(this.repository);
 
-  Future<ChatMessage> call(String text, String chatId) async {
-    return await repository.sendMessage(text, chatId);
+  Future<ChatMessage> call(
+    String text,
+    String chatId, {
+    String? systemInstruction,
+  }) async {
+    return await repository.sendMessage(
+      text,
+      chatId,
+      systemInstruction: systemInstruction,
+    );
   }
 }

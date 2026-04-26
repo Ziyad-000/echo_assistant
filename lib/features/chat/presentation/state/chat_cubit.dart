@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/usecases/create_new_chat_usecase.dart';
@@ -9,6 +10,8 @@ import '../../domain/usecases/get_history_chats_usecase.dart';
 import '../../domain/usecases/process_audio_recording_usecase.dart';
 import '../../domain/usecases/send_message_usecase.dart';
 import '../../domain/usecases/start_recording_usecase.dart';
+import '../../../memory/domain/usecases/fetch_user_facts_usecase.dart';
+import '../../../memory/domain/usecases/save_user_fact_usecase.dart';
 import 'chat_state.dart';
 
 class ChatCubit extends Cubit<ChatState> {
@@ -21,6 +24,9 @@ class ChatCubit extends Cubit<ChatState> {
   final ProcessAudioRecordingUseCase processAudioRecordingUseCase;
   final GetAmplitudeStreamUseCase getAmplitudeStreamUseCase;
 
+  final SaveUserFactUseCase saveUserFactUseCase;
+  final FetchUserFactsUseCase fetchUserFactsUseCase;
+
   StreamSubscription<double>? _amplitudeSubscription;
 
   ChatCubit({
@@ -32,7 +38,65 @@ class ChatCubit extends Cubit<ChatState> {
     required this.startRecordingUseCase,
     required this.processAudioRecordingUseCase,
     required this.getAmplitudeStreamUseCase,
+    required this.saveUserFactUseCase,
+    required this.fetchUserFactsUseCase,
   }) : super(const ChatInitial(sessions: [], messages: []));
+
+  Future<String> _buildSystemInstruction() async {
+    final facts = await fetchUserFactsUseCase();
+    final factsContext = facts
+        .map((e) => '- ${e.category}: ${e.key} = ${e.value}')
+        .join('\\n');
+    return '''You are an expert data extractor. Monitor the chat for persistent technical facts about the user (e.g., Tech stack, OS preference, University subjects). If a fact is found, append it at the end of your response inside this tag: <FACT>{"key": "...", "value": "...", "category": "..."}</FACT>. ONLY extract facts related to Technology, Design, Systems, or Academics.
+
+IMPORTANT: If the user provides an update to a fact you already know, you MUST use the exact same "key" and "category" from the User Context below so the system can overwrite the old value.
+
+User Context:
+$factsContext''';
+  }
+
+  void _extractAndSaveFacts(String text) {
+    final regExp = RegExp(r'<FACT>(.*?)</FACT>', dotAll: true);
+    final matches = regExp.allMatches(text);
+    for (final match in matches) {
+      if (match.groupCount >= 1) {
+        try {
+          final jsonStr = match.group(1)!;
+          final json = jsonDecode(jsonStr);
+          final key = json['key'];
+          final value = json['value'];
+          final category = json['category'];
+          if (key != null && value != null && category != null) {
+            saveUserFactUseCase(
+              key.toString(),
+              value.toString(),
+              category.toString(),
+            );
+          }
+        } catch (e) {
+          // ignore JSON parse errors
+        }
+      }
+    }
+  }
+
+  String _stripFacts(String text) {
+    final regExp = RegExp(r'<FACT>.*?</FACT>', dotAll: true);
+    return text.replaceAll(regExp, '').trim();
+  }
+
+  List<ChatMessage> _prepareUI(List<ChatMessage> messages) {
+    return messages
+        .map(
+          (m) => ChatMessage(
+            id: m.id,
+            text: _stripFacts(m.text),
+            timestamp: m.timestamp,
+            isUser: m.isUser,
+          ),
+        )
+        .toList();
+  }
 
   @override
   Future<void> close() {
@@ -46,7 +110,7 @@ class ChatCubit extends Cubit<ChatState> {
       ChatSuccess(
         sessions: sessions,
         currentChatId: state.currentChatId,
-        messages: state.messages,
+        messages: _prepareUI(state.messages),
         isListening: state.isListening,
         temporaryVoiceText: state.temporaryVoiceText,
       ),
@@ -162,7 +226,7 @@ class ChatCubit extends Cubit<ChatState> {
       ChatSuccess(
         sessions: state.sessions,
         currentChatId: chatId,
-        messages: messages,
+        messages: _prepareUI(messages),
         isListening: state.isListening,
         temporaryVoiceText: state.temporaryVoiceText,
       ),
@@ -229,8 +293,16 @@ class ChatCubit extends Cubit<ChatState> {
     );
 
     try {
+      final systemInstruction = await _buildSystemInstruction();
+
       // 2. Call usecase for AI response (which inherently saves to DB)
-      await sendMessageUseCase(text, chatId);
+      final aiMessage = await sendMessageUseCase(
+        text,
+        chatId,
+        systemInstruction: systemInstruction,
+      );
+
+      _extractAndSaveFacts(aiMessage.text);
 
       // Re-fetch messages strictly from DB just in case? Or append. Let's fetch from DB to get right IDs:
       final finalMessages = await getChatMessagesUseCase(chatId);
@@ -240,7 +312,7 @@ class ChatCubit extends Cubit<ChatState> {
         ChatSuccess(
           sessions: finalSessions,
           currentChatId: chatId,
-          messages: finalMessages,
+          messages: _prepareUI(finalMessages),
           isListening: state.isListening,
           temporaryVoiceText: '', // Clear recognized text after send
         ),

@@ -3,7 +3,11 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import '../models/chat_model.dart';
 
 abstract class IChatRemoteDataSource {
-  Future<ChatModel> sendMessage(String text);
+  Future<ChatModel> sendMessage(
+    String text, {
+    required List<Map<String, dynamic>> history,
+    String? systemInstruction,
+  });
 }
 
 class GeminiRemoteDataSource implements IChatRemoteDataSource {
@@ -21,9 +25,32 @@ class GeminiRemoteDataSource implements IChatRemoteDataSource {
   }
 
   @override
-  Future<ChatModel> sendMessage(String text) async {
-    final content = [Content.text(text)];
-    final response = await _model.generateContent(content);
+  Future<ChatModel> sendMessage(
+    String text, {
+    required List<Map<String, dynamic>> history,
+    String? systemInstruction,
+  }) async {
+    // Recreate model if system instruction is provided or we need to apply it per request dynamically
+    final model = systemInstruction != null
+        ? GenerativeModel(
+            model: 'gemini-2.5-flash',
+            apiKey: dotenv.env['GEMINI_API_KEY'] ?? '',
+            systemInstruction: Content.system(systemInstruction),
+          )
+        : _model;
+
+    // Convert history to Content
+    final chatHistory = history.map((e) {
+      if (e['is_user'] == true || e['is_user'] == 1) {
+        return Content.text(e['content']);
+      } else {
+        return Content.model([TextPart(e['content'])]);
+      }
+    }).toList();
+
+    // We can use startChat, or just append the user message to history
+    final chatSession = model.startChat(history: chatHistory);
+    final response = await chatSession.sendMessage(Content.text(text));
 
     if (response.text != null) {
       return ChatModel(

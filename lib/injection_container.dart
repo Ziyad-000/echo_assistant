@@ -23,6 +23,10 @@ import 'features/chat/domain/usecases/process_audio_recording_usecase.dart';
 import 'features/chat/domain/usecases/send_message_usecase.dart';
 import 'features/chat/domain/usecases/start_recording_usecase.dart';
 import 'features/chat/presentation/state/chat_cubit.dart';
+import 'features/memory/data/repositories/user_facts_repository_impl.dart';
+import 'features/memory/domain/repositories/i_user_facts_repository.dart';
+import 'features/memory/domain/usecases/fetch_user_facts_usecase.dart';
+import 'features/memory/domain/usecases/save_user_fact_usecase.dart';
 import 'features/splash/presentation/states/splash_cubit.dart';
 
 final sl = GetIt.instance;
@@ -56,6 +60,8 @@ Future<void> init() async {
       startRecordingUseCase: sl(),
       processAudioRecordingUseCase: sl(),
       getAmplitudeStreamUseCase: sl(),
+      saveUserFactUseCase: sl(),
+      fetchUserFactsUseCase: sl(),
     ),
   );
 
@@ -81,6 +87,13 @@ Future<void> init() async {
   sl.registerLazySingleton<IChatLocalDataSource>(
     () => ChatLocalDataSourceImpl(databaseHelper: sl()),
   );
+
+  // Features - Memory
+  sl.registerLazySingleton<IUserFactsRepository>(
+    () => UserFactsRepositoryImpl(databaseHelper: sl()),
+  );
+  sl.registerLazySingleton(() => SaveUserFactUseCase(sl()));
+  sl.registerLazySingleton(() => FetchUserFactsUseCase(sl()));
 
   // Features - Splash
   sl.registerFactory(() => SplashCubit(checkUserStatusUseCase: sl()));

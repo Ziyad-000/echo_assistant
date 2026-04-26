@@ -50,7 +50,11 @@ class ChatRepositoryImpl implements IChatRepository {
   }
 
   @override
-  Future<ChatMessage> sendMessage(String text, String chatId) async {
+  Future<ChatMessage> sendMessage(
+    String text,
+    String chatId, {
+    String? systemInstruction,
+  }) async {
     // 1. Check if it's the first message, update chat title
     final existingMessages = await localDataSource.getMessages(chatId);
     if (existingMessages.isEmpty) {
@@ -76,10 +80,19 @@ class ChatRepositoryImpl implements IChatRepository {
     }
 
     try {
-      // 4. Get AI response from remote
-      final aiResponse = await remoteDataSource.sendMessage(text);
+      // Create history map
+      final history = existingMessages
+          .map((m) => {'content': m.text, 'is_user': m.isUser ? 1 : 0})
+          .toList();
 
-      // Convert core ChatMessage from Gemini to Model to save
+      // 4. Get AI response from remote
+      final aiResponse = await remoteDataSource.sendMessage(
+        text,
+        history: history,
+        systemInstruction: systemInstruction,
+      );
+
+      // Convert core ChatModel from Gemini to ChatMessageModel to save
       final aiMessageModel = ChatMessageModel(
         id: _uuid.v4(),
         chatId: chatId,

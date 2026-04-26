@@ -6,5 +6,9 @@ abstract class IChatRepository {
   Future<List<ChatMessage>> getChatMessages(String chatId);
   Future<ChatSession> createNewChat();
   Future<void> deleteChat(String chatId);
-  Future<ChatMessage> sendMessage(String text, String chatId);
+  Future<ChatMessage> sendMessage(
+    String text,
+    String chatId, {
+    String? systemInstruction,
+  });
 }
