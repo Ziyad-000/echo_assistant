@@ -10,5 +10,6 @@ abstract class IChatRepository {
     String text,
     String chatId, {
     String? systemInstruction,
+    bool isRetry = false,
   });
 }

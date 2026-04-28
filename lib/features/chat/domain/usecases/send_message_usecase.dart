@@ -10,11 +10,13 @@ class SendMessageUseCase {
     String text,
     String chatId, {
     String? systemInstruction,
+    bool isRetry = false,
   }) async {
     return await repository.sendMessage(
       text,
       chatId,
       systemInstruction: systemInstruction,
+      isRetry: isRetry,
     );
   }
 }
