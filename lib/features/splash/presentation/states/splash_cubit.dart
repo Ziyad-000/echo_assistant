@@ -17,10 +17,7 @@ class SplashCubit extends Cubit<SplashState> {
   SplashCubit({required this.checkUserStatusUseCase}) : super(SplashWaiting());
 
   void startSplash() async {
-    // Optional: Add a small delay for branding if needed
-    await Future.delayed(const Duration(seconds: 2));
-
-    // Check authentication status
+    // Check authentication status concurrently with initializations
     final bool isLoggedIn = await checkUserStatusUseCase();
 
     if (isLoggedIn) {

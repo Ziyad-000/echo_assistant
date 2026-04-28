@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/usecases/create_new_chat_usecase.dart';
@@ -55,29 +56,45 @@ User Context:
 $factsContext''';
   }
 
-  void _extractAndSaveFacts(String text) {
+  Future<void> _extractAndSaveFacts(String text) async {
+    // Offload heavy RegEx and JSON decoding to a background Isolate
+    final List<Map<String, dynamic>> extractedFacts = await Isolate.run(
+      () => _parseFactsInBackground(text),
+    );
+
+    for (final fact in extractedFacts) {
+      saveUserFactUseCase(
+        fact['key'].toString(),
+        fact['value'].toString(),
+        fact['category'].toString(),
+      );
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> _parseFactsInBackground(
+    String text,
+  ) async {
+    // Using a micro-task or Isolate to avoid blocking UI during parsing
+    final List<Map<String, dynamic>> facts = [];
     final regExp = RegExp(r'<FACT>(.*?)</FACT>', dotAll: true);
     final matches = regExp.allMatches(text);
+
     for (final match in matches) {
       if (match.groupCount >= 1) {
         try {
           final jsonStr = match.group(1)!;
           final json = jsonDecode(jsonStr);
-          final key = json['key'];
-          final value = json['value'];
-          final category = json['category'];
-          if (key != null && value != null && category != null) {
-            saveUserFactUseCase(
-              key.toString(),
-              value.toString(),
-              category.toString(),
-            );
+          if (json['key'] != null &&
+              json['value'] != null &&
+              json['category'] != null) {
+            facts.add(Map<String, dynamic>.from(json));
           }
-        } catch (e) {
+        } catch (_) {
           // ignore JSON parse errors
         }
       }
     }
+    return facts;
   }
 
   String _stripFacts(String text) {
@@ -256,55 +273,60 @@ $factsContext''';
     }
   }
 
-  Future<void> sendMessage(String text) async {
+  Future<void> sendMessage(String text, {bool isRetry = false}) async {
     if (text.trim().isEmpty) return;
+    if (state is ChatTyping || state is ChatVoiceProcessing) return;
 
     String? chatId = state.currentChatId;
 
-    if (chatId == null) {
-      // Create chat in DB ONLY when the first message is sent
-      final newChat = await createNewChatUseCase();
-      chatId = newChat.id;
+    // --- Optimistic UI ---
+    List<ChatMessage> optimisticMessages;
+
+    if (!isRetry) {
+      // Create a temporary placeholder so the user sees their message instantly.
+      final tempMessage = ChatMessage(
+        id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+        text: text,
+        timestamp: DateTime.now(),
+        isUser: true,
+      );
+      optimisticMessages = [...state.messages, tempMessage];
+    } else {
+      // On retry, just use the existing list — the optimistic bubble is already there.
+      optimisticMessages = state.messages;
     }
 
-    // 1. Append user message and show typing
-    final userMessage = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch
-          .toString(), // Temp ID until DB assigns real one, wait model has UUID
-      text: text,
-      timestamp: DateTime.now(),
-      isUser: true,
-    );
-
-    final updatedMessages = List<ChatMessage>.from(state.messages)
-      ..add(userMessage);
-
-    // Ensure sessions are refreshed if this was the first message (auto-naming might change title)
-    final updatedSessions = await getHistoryChatsUseCase();
-
+    // Use cached sessions for an instant emit — no DB round-trip needed here.
+    // The authoritative refresh happens in the success flow below.
     emit(
       ChatTyping(
-        sessions: updatedSessions,
+        sessions: state.sessions,
         currentChatId: chatId,
-        messages: updatedMessages,
+        messages: optimisticMessages,
         isListening: state.isListening,
         temporaryVoiceText: state.temporaryVoiceText,
       ),
     );
 
+    // Lazily create the DB chat entry only when the first real message is sent.
+    if (chatId == null) {
+      final newChat = await createNewChatUseCase();
+      chatId = newChat.id;
+    }
+
     try {
       final systemInstruction = await _buildSystemInstruction();
 
-      // 2. Call usecase for AI response (which inherently saves to DB)
       final aiMessage = await sendMessageUseCase(
         text,
         chatId,
         systemInstruction: systemInstruction,
       );
 
-      _extractAndSaveFacts(aiMessage.text);
+      await _extractAndSaveFacts(aiMessage.text);
 
-      // Re-fetch messages strictly from DB just in case? Or append. Let's fetch from DB to get right IDs:
+      // Re-fetch from DB — this naturally replaces temp_ messages with persisted
+      // ones (real IDs), ensuring zero duplicates and data integrity.
       final finalMessages = await getChatMessagesUseCase(chatId);
       final finalSessions = await getHistoryChatsUseCase();
 
@@ -314,20 +336,38 @@ $factsContext''';
           currentChatId: chatId,
           messages: _prepareUI(finalMessages),
           isListening: state.isListening,
-          temporaryVoiceText: '', // Clear recognized text after send
+          temporaryVoiceText: '',
         ),
       );
     } catch (e) {
+      // Emit error but keep the current message list in the state.
+      // The temp_ message stays visible so the user can see what failed,
+      // but it is NEVER persisted to SQLite — if the user exits, it vanishes.
       emit(
         ChatError(
           sessions: state.sessions,
           currentChatId: chatId,
-          messages: updatedMessages,
-          message: e.toString(),
+          messages: state.messages,
+          message: "Slight connection hiccup. Let's try that again.",
           isListening: state.isListening,
           temporaryVoiceText: state.temporaryVoiceText,
         ),
       );
+    } finally {
+      // Safety net: if something throws before the catch, ensure we never
+      // leave the UI stuck in ChatTyping.
+      if (state is ChatTyping) {
+        emit(
+          ChatError(
+            sessions: state.sessions,
+            currentChatId: chatId,
+            messages: state.messages,
+            message: "Slight connection hiccup. Let's try that again.",
+            isListening: state.isListening,
+            temporaryVoiceText: state.temporaryVoiceText,
+          ),
+        );
+      }
     }
   }
 }

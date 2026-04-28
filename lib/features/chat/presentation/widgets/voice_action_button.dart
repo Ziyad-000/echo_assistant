@@ -83,7 +83,9 @@ class VoiceActionButton extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  onPressed: isProcessing ? null : onPressed,
+                  onPressed: (isProcessing || state is ChatTyping)
+                      ? null
+                      : onPressed,
                   icon: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     transitionBuilder: (child, animation) {

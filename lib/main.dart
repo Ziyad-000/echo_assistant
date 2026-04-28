@@ -9,6 +9,7 @@ import 'injection_container.dart' as di;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize dependencies before running the app
   await dotenv.load(fileName: ".env");
   await di.init();
 

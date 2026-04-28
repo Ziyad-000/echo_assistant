@@ -83,14 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
             current is ChatSpeechError,
         listener: (context, state) {
           debugPrint("🚨 UI State Changed to: $state");
-          if (state is ChatError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          } else if (state is ChatSpeechError) {
+          if (state is ChatSpeechError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.error),
@@ -207,6 +200,66 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          if (state is ChatError)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.errorContainer.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        state.message,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        if (state.messages.isNotEmpty) {
+                          final lastUserMsg = state.messages.lastWhere(
+                            (m) => m.isUser,
+                            orElse: () => state.messages.last,
+                          );
+                          if (lastUserMsg.isUser) {
+                            context.read<ChatCubit>().sendMessage(
+                              lastUserMsg.text,
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Retry'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           Padding(
