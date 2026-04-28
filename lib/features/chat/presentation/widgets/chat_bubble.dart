@@ -8,6 +8,18 @@ class ChatBubble extends StatelessWidget {
 
   const ChatBubble({super.key, required this.text, required this.isUser});
 
+  /// Returns [TextDirection.rtl] when [text] starts with an Arabic character
+  /// (Unicode range U+0600–U+06FF). Markdown code blocks always return
+  /// [TextDirection.ltr] regardless of content.
+  TextDirection _getDirection(String text) {
+    if (text.startsWith('```')) return TextDirection.ltr;
+    if (text.isEmpty) return TextDirection.ltr;
+    final firstCode = text.codeUnitAt(0);
+    return (firstCode >= 0x0600 && firstCode <= 0x06FF)
+        ? TextDirection.rtl
+        : TextDirection.ltr;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -73,34 +85,41 @@ class ChatBubble extends StatelessWidget {
                   ),
                 ),
                 child: isUser
-                    ? Text(
-                        text,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 16,
-                          height: 1.4,
-                        ),
-                      )
-                    : MarkdownBody(
-                        data: text,
-                        styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
+                    ? Directionality(
+                        textDirection: _getDirection(text),
+                        child: Text(
+                          text,
+                          textAlign: TextAlign.start,
+                          style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 16,
                             height: 1.4,
                           ),
-                          code: const TextStyle(
-                            backgroundColor: Color(0xFF1E1E1E),
-                            color: Color(0xFF4AF626), // Terminal green
-                            fontFamily: 'monospace',
-                            fontSize: 14,
-                          ),
-                          codeblockPadding: const EdgeInsets.all(16.0),
-                          codeblockDecoration: BoxDecoration(
-                            color: const Color(0xFF1E1E1E), // IDE Dark
-                            borderRadius: BorderRadius.circular(12.0),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      )
+                    : Directionality(
+                        textDirection: _getDirection(text),
+                        child: MarkdownBody(
+                          data: text,
+                          styleSheet: MarkdownStyleSheet(
+                            p: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontSize: 16,
+                              height: 1.4,
+                            ),
+                            code: const TextStyle(
+                              backgroundColor: Color(0xFF1E1E1E),
+                              color: Color(0xFF4AF626), // Terminal green
+                              fontFamily: 'monospace',
+                              fontSize: 14,
+                            ),
+                            codeblockPadding: const EdgeInsets.all(16.0),
+                            codeblockDecoration: BoxDecoration(
+                              color: const Color(0xFF1E1E1E), // IDE Dark
+                              borderRadius: BorderRadius.circular(12.0),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.1),
+                              ),
                             ),
                           ),
                         ),
