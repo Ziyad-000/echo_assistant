@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
@@ -49,84 +48,70 @@ class ChatBubble extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.85,
           ),
-          child: ClipRRect(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16.0,
+            vertical: 14.0,
+          ),
+          decoration: BoxDecoration(
+            // Semi-transparent fill simulates glass without triggering
+            // Impeller's blur shader pipeline — fixes the Linux GPU error.
+            color: isUser
+                ? (isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.06))
+                : (isDark
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.14)
+                    : Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.08)),
             borderRadius: borderRadius,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 14.0,
-                ),
-                decoration: BoxDecoration(
-                  color: isUser
-                      ? (isDark
-                            ? Colors.white.withValues(alpha: 0.05)
-                            : Colors.black.withValues(alpha: 0.05))
-                      : Colors.transparent, // AI uses gradient
-                  gradient: isUser
-                      ? null
-                      : LinearGradient(
-                          colors: [
-                            Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.15),
-                            Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.05),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                  borderRadius: borderRadius,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    width: 0.5,
-                  ),
-                ),
-                child: isUser
-                    ? Directionality(
-                        textDirection: _getDirection(text),
-                        child: Text(
-                          text,
-                          textAlign: TextAlign.start,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 16,
-                            height: 1.4,
-                          ),
-                        ),
-                      )
-                    : Directionality(
-                        textDirection: _getDirection(text),
-                        child: MarkdownBody(
-                          data: text,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontSize: 16,
-                              height: 1.4,
-                            ),
-                            code: const TextStyle(
-                              backgroundColor: Color(0xFF1E1E1E),
-                              color: Color(0xFF4AF626), // Terminal green
-                              fontFamily: 'monospace',
-                              fontSize: 14,
-                            ),
-                            codeblockPadding: const EdgeInsets.all(16.0),
-                            codeblockDecoration: BoxDecoration(
-                              color: const Color(0xFF1E1E1E), // IDE Dark
-                              borderRadius: BorderRadius.circular(12.0),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.1),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-              ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 0.5,
             ),
           ),
+          child: isUser
+              ? Directionality(
+                  textDirection: _getDirection(text),
+                  child: Text(
+                    text,
+                    textAlign: TextAlign.start,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 16,
+                      height: 1.4,
+                    ),
+                  ),
+                )
+              : Directionality(
+                  textDirection: _getDirection(text),
+                  child: MarkdownBody(
+                    data: text,
+                    styleSheet: MarkdownStyleSheet(
+                      p: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 16,
+                        height: 1.4,
+                      ),
+                      code: const TextStyle(
+                        backgroundColor: Color(0xFF1E1E1E),
+                        color: Color(0xFF4AF626),
+                        fontFamily: 'monospace',
+                        fontSize: 14,
+                      ),
+                      codeblockPadding: const EdgeInsets.all(16.0),
+                      codeblockDecoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(12.0),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
         ),
       ),
     );

@@ -129,6 +129,9 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         },
         child: BlocBuilder<ChatCubit, ChatState>(
+          buildWhen: (previous, current) =>
+              previous.messages.length != current.messages.length ||
+              previous.runtimeType != current.runtimeType,
           builder: (context, state) {
             return Column(
               children: [

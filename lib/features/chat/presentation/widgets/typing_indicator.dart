@@ -28,6 +28,10 @@ class _TypingIndicatorState extends State<TypingIndicator>
 
   @override
   Widget build(BuildContext context) {
+    // Resolve theme color once per build — NOT inside AnimatedBuilder which
+    // fires every 16ms. This prevents InheritedWidget tree-walks per frame.
+    final dotColor = Theme.of(context).colorScheme.onSurfaceVariant;
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -47,8 +51,18 @@ class _TypingIndicatorState extends State<TypingIndicator>
           children: List.generate(3, (index) {
             return AnimatedBuilder(
               animation: _controller,
+              // Pass the dot as a pre-built child — it's only created once,
+              // not on every animation tick.
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                width: 8.0,
+                height: 8.0,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
               builder: (context, child) {
-                // Determine animation phase for staggered effect
                 final offset = index * 0.2;
                 final t = (_controller.value - offset) % 1.0;
                 final phase = t < 0 ? t + 1 : t;
@@ -62,15 +76,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
                   opacity: opacity,
                   child: Transform.translate(
                     offset: Offset(0, dy),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 3.0),
-                      width: 8.0,
-                      height: 8.0,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
+                    child: child,
                   ),
                 );
               },

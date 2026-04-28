@@ -30,6 +30,10 @@ class ChatCubit extends Cubit<ChatState> {
 
   StreamSubscription<double>? _amplitudeSubscription;
 
+  /// Cached system instruction string. Built once on first send, then reused.
+  /// Invalidated only when new user facts are extracted and persisted.
+  String? _cachedSystemInstruction;
+
   ChatCubit({
     required this.sendMessageUseCase,
     required this.getHistoryChatsUseCase,
@@ -44,12 +48,15 @@ class ChatCubit extends Cubit<ChatState> {
   }) : super(const ChatInitial(sessions: [], messages: []));
 
   Future<String> _buildSystemInstruction() async {
+    // Return cached value immediately — avoids a SQLite hit on every send.
+    if (_cachedSystemInstruction != null) return _cachedSystemInstruction!;
+
     final facts = await fetchUserFactsUseCase();
     final factsContext = facts
         .map((e) => '- ${e.category}: ${e.key} = ${e.value}')
-        .join('\\n');
+        .join('\n'); // Fixed: single backslash = real newline
 
-    return '''
+    _cachedSystemInstruction = '''
 # Your Identity & Origin
 - Your name is "Echo" (إيكو).
 - You are a sophisticated Egyptian AI assistant and a tech-savvy companion.
@@ -87,6 +94,7 @@ IMPORTANT: If the user updates a fact you already know, you MUST use the exact s
 
 User Context (Facts you already know about the user):
 $factsContext''';
+    return _cachedSystemInstruction!;
   }
 
   Future<void> _extractAndSaveFacts(String text) async {
@@ -95,13 +103,17 @@ $factsContext''';
       () => _parseFactsInBackground(text),
     );
 
+    if (extractedFacts.isEmpty) return;
+
     for (final fact in extractedFacts) {
-      saveUserFactUseCase(
+      await saveUserFactUseCase(
         fact['key'].toString(),
         fact['value'].toString(),
         fact['category'].toString(),
       );
     }
+    // Invalidate cache so the next sendMessage picks up the newly saved facts.
+    _cachedSystemInstruction = null;
   }
 
   static Future<List<Map<String, dynamic>>> _parseFactsInBackground(
