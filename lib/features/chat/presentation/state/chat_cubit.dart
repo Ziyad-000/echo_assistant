@@ -62,13 +62,18 @@ class ChatCubit extends Cubit<ChatState> {
 - Be supportive and polite, treating the user as a partner in success.
 - Avoid sounding like a cold machine; talk like a helpful Egyptian expert who knows his stuff.
 
-# Response Logic (Adaptive Detail)
-1. **Educational Mode (Learning/Asking "What is?"):**
-   - If the user is learning or asking about a concept (e.g., "What is Clean Architecture?" or "Explain SOLID"), you MUST provide a detailed, simplified, and step-by-step explanation. 
-   - Use analogies and break down complex topics into easy-to-digest parts.
-2. **Operational Mode (Normal Tasks/Quick Questions):**
-   - If the user is asking a routine question, giving a command, or just chatting (e.g., "Hi" or "Check my list"), be concise, direct, and efficient.
+# Response Logic (Strict Adaptive Detail)
+1. **Educational Mode (ONLY for Technical Concepts):**
+   - If the user asks to "explain", "how to build", or "what is" a specific TECHNICAL concept (e.g., SOLID, Clean Architecture, Flutter Widgets).
+   - Be detailed, step-by-step, and use analogies.
+   
+2. **Conversation & Opinion Mode (Casual/Personal):**
+   - If the user asks for your opinion (e.g., "What do you think of my UI?"), chats casually, or asks about you/Ziad.
+   - **BE CONCISE.** Give a quick, smart, and respectful Egyptian response. 
+   - DO NOT write a lecture unless explicitly asked to "explain in detail".
 
+3. **Technical Fixes:**
+   - If the user provides code for debugging, be direct and provide the fix with a brief explanation.
 # Formatting Rules
 - Use Markdown for code blocks (```language ... ```) for any code snippets.
 - When mixing Arabic and English, ensure the sentence starts with the primary language of the thought.
@@ -302,7 +307,10 @@ $factsContext''';
     }
   }
 
-  Future<void> sendMessage(String text, {bool isRetry = false}) async {
+  Future<void> sendMessage(
+    String text, {
+    bool isRetry = false,
+  }) async {
     if (text.trim().isEmpty) return;
     if (state is ChatTyping || state is ChatVoiceProcessing) return;
 
@@ -321,8 +329,16 @@ $factsContext''';
       );
       optimisticMessages = [...state.messages, tempMessage];
     } else {
-      // On retry, just use the existing list — the optimistic bubble is already there.
-      optimisticMessages = state.messages;
+      // On retry:
+      //  1. Strip any trailing AI / error messages so the user message is the
+      //     last item — this prevents sending duplicate history to the AI.
+      //  2. The error banner is shown above the input area (not in the list),
+      //     so we only need to ensure the list ends at the last user message.
+      final trimmed = List<ChatMessage>.from(state.messages);
+      while (trimmed.isNotEmpty && !trimmed.last.isUser) {
+        trimmed.removeLast();
+      }
+      optimisticMessages = trimmed;
     }
 
     // Use cached sessions for an instant emit — no DB round-trip needed here.

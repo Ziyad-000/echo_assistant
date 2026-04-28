@@ -248,6 +248,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           if (lastUserMsg.isUser) {
                             context.read<ChatCubit>().sendMessage(
                               lastUserMsg.text,
+                              isRetry: true,
                             );
                           }
                         }
