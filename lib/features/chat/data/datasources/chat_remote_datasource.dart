@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../models/chat_model.dart';
@@ -13,10 +14,10 @@ abstract class IChatRemoteDataSource {
 
 class GeminiRemoteDataSource implements IChatRemoteDataSource {
   final List<String> _models = [
-    'gemini-3-flash-preview',
-    'gemini-3.1-pro-preview',
+    'gemini-2.5-flash-lite',
     'gemini-2.5-flash',
-    'gemini-2.0-flash',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3-flash',
   ];
 
   GeminiRemoteDataSource() {
@@ -54,9 +55,24 @@ class GeminiRemoteDataSource implements IChatRemoteDataSource {
       final chatSession = model.startChat(history: chatHistory);
 
       try {
+        if (kDebugMode) {
+          print(
+            '[GeminiDS] ➤ Model   : $modelName  (attempt ${i + 1}/${_models.length})',
+          );
+        }
+        if (kDebugMode) {
+          print('[GeminiDS] ➤ Message : $text');
+        }
+        final stopwatch = Stopwatch()..start();
+
         final response = await chatSession
             .sendMessage(Content.text(text))
             .timeout(const Duration(seconds: 35));
+
+        stopwatch.stop();
+        if (kDebugMode) {
+          print('[GeminiDS] ✓ Latency : ${stopwatch.elapsedMilliseconds} ms');
+        }
 
         if (response.text != null) {
           return ChatModel(
@@ -70,22 +86,49 @@ class GeminiRemoteDataSource implements IChatRemoteDataSource {
         }
       } catch (e) {
         final errorString = e.toString().toLowerCase();
-        final isTransient =
+
+        // The Gemini SDK sometimes returns quota errors as:
+        //   "You exceeded your current quota..."  → no '429' in the string
+        //   "resource_exhausted"                  → gRPC style
+        //   "rate limit"                          → generic wording
+        // So we check all known forms, not just the HTTP status code.
+        final isRateLimit =
             errorString.contains('429') ||
+            errorString.contains('quota') ||
+            errorString.contains('resource_exhausted') ||
+            errorString.contains('rate limit');
+
+        final isTransient =
+            isRateLimit ||
             errorString.contains('503') ||
             errorString.contains('502') ||
             errorString.contains('timeout') ||
             e is TimeoutException;
 
-        // If it's the last model or the error is not transient, throw
+        final preview = e.toString();
+        if (kDebugMode) {
+          print(
+            '[GeminiDS] ✗ Error on $modelName'
+            ' | isRateLimit=$isRateLimit'
+            ' | isTransient=$isTransient'
+            ' | msg=${preview.substring(0, preview.length.clamp(0, 200))}',
+          );
+        }
+
+        // If it's the last model or the error is non-transient (e.g. 400/404), give up.
         if (i == _models.length - 1 || !isTransient) {
           rethrow;
         }
 
-        // Exponential Backoff: Wait before switching to the next model
-        // More delay for each subsequent model
-        await Future.delayed(Duration(seconds: (i + 1) * 2));
-        continue; // Try next model
+        // Quota/rate-limit: window resets every 60 s — wait it out before next model.
+        // Other transient errors (502/503/timeout): shorter exponential pause.
+        final delaySeconds = isRateLimit ? 62 : (i + 1) * 3;
+        if (kDebugMode) {
+          print(
+            '[GeminiDS] ↻ Waiting ${delaySeconds}s then trying ${_models[i + 1]}...',
+          );
+        }
+        await Future.delayed(Duration(seconds: delaySeconds));
       }
     }
 
